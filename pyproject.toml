@@ -1,0 +1,9 @@
+[project]
+name = "compaction-visual-runtime-lab"
+version = "0.1.0"
+description = "An offline, observable context-compaction runtime experiment"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
