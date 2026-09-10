@@ -1,0 +1,42 @@
+/* Text-first technical console. No remote fonts or decorative assets. */
+:root { color-scheme: dark; }
+.stApp { background: #111111; color: #dddddd; }
+[data-testid="stHeader"], [data-testid="stToolbar"], #MainMenu, footer { display: none; }
+[data-testid="stMainBlockContainer"] { max-width: 1160px; padding: 1.7rem 2rem 3rem; }
+[data-testid="stVerticalBlock"] { gap: .65rem; }
+.stApp :is(h1,h2,h3,p,label,input,textarea,button,pre,code,table) {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", "Noto Sans Mono", monospace;
+}
+.stApp h1 { font-size: 21px; font-weight: 500; line-height: 1.4; padding: 0 0 .1rem; letter-spacing: -.4px; }
+.stApp h2, .stApp h3 { font-size: 14px; font-weight: 500; line-height: 1.6; padding: .5rem 0 .15rem; }
+.stApp p, .stApp label { font-size: 13px; line-height: 1.6; }
+[data-testid="stCaptionContainer"] p { color: #9b9b9b; font-size: 12px; }
+.stApp button { border-radius: 3px; box-shadow: none; font-size: 12px; min-height: 34px; }
+.stApp button p { font-size: 12px; }
+[data-testid="stButton"] button, [data-testid="stDownloadButton"] button {
+  border: 1px solid #414141; background: #171717; color: #dddddd;
+}
+[data-testid="stButton"] button:hover, [data-testid="stDownloadButton"] button:hover { border-color: #888888; background: #202020; color: #ffffff; }
+[data-testid="stButton"] button:disabled { color: #747474; border-color: #303030; background: #111111; }
+.stApp input, .stApp [data-baseweb="select"] > div { border-radius: 3px; background: #191919; font-size: 13px; }
+.control-spacer { height: 29px; }
+[data-baseweb="tab-list"] { gap: 1.5rem; border-bottom: 1px solid #333333; }
+[data-baseweb="tab"] { padding: 5px 0 8px; height: auto; color: #969696; }
+[data-baseweb="tab"][aria-selected="true"] { color: #eeeeee; }
+[data-baseweb="tab-highlight"] { background-color: #bcbcbc; height: 1px; }
+[data-testid="stExpander"] { border-color: #333333; border-radius: 3px; }
+.console-output { margin: 0; padding: .7rem 0; border-top: 1px solid #303030; border-bottom: 1px solid #303030;
+  color: #dedede; background: transparent; font-size: 13px; line-height: 1.8;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.console-table-scroll { overflow-x: auto; }
+table.console-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+table.console-table th, table.console-table td { padding: 6px 12px 6px 0; text-align: left; white-space: nowrap; border: 0; border-bottom: 1px solid #292929; }
+table.console-table th { color: #a6a6a6; font-weight: 400; border-bottom-color: #484848; }
+table.console-table .numeric { text-align: right; }
+[data-testid="stCode"] pre { font-size: 12px; border-radius: 3px; }
+@media (max-width: 640px) {
+  [data-testid="stMainBlockContainer"] { padding: 1rem .85rem 2rem; }
+  .stApp h1 { font-size: 17px; letter-spacing: -.5px; }
+  .control-spacer { display: none; }
+  .console-output { font-size: 12px; }
+}

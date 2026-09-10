@@ -5,8 +5,9 @@ gatherUsageStats = false
 address = "127.0.0.1"
 
 [theme]
-base = "light"
-primaryColor = "#19736b"
-backgroundColor = "#f8faf9"
-secondaryBackgroundColor = "#edf2f0"
-textColor = "#182e2b"
+base = "dark"
+primaryColor = "#cccccc"
+backgroundColor = "#111111"
+secondaryBackgroundColor = "#191919"
+textColor = "#dddddd"
+font = "monospace"

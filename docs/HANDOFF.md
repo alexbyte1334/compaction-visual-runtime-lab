@@ -1,5 +1,7 @@
 # 公司电脑接续开发
 
+先阅读根目录 [PRD.md](../PRD.md)，它是唯一需求基线。
+
 先按 README Clone、安装、warmup、运行 pytest 与 compare。不要把 .venv 从 macOS 复制到 Windows；重新安装依赖。首次准备需要网络；`.token-cache/` 缓存缺失时程序会要求先准备，不会默默用字符数替代 Token。
 
 ## 第一轮：理解自己要讲的案例（约 1 小时）

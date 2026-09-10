@@ -1,5 +1,7 @@
 # 机制与代码地图
 
+需求以根目录 [PRD.md](../PRD.md) 为唯一基线。
+
 ## 责任边界
 
 | 文件 | 责任 | 不做什么 |
@@ -10,7 +12,7 @@
 | lab/providers.py | 根据请求返回纯提议 | 不修改 Runtime 或磁盘 |
 | lab/runtime.py | 预算、快照、状态重建、校验、提交 | 不相信 Provider 自报成功 |
 | lab/cli.py | 实验编排和 JSON 导出 | 不把 rejected 候选交给 Worker |
-| app.py | 单步控制和展示实际事件 | 不预设压缩成功或测试结果 |
+| app.py / lab/console.py / ui/console.css | 技术控制台、逐行日志、数据表和单步控制 | 不预设压缩成功或测试结果 |
 
 ## 一次受控变更
 

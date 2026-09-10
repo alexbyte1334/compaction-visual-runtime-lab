@@ -1,17 +1,18 @@
-"""Streamlit is only a view/controller; all stage data comes from Runtime."""
+"""Technical console. Views render Runtime events; controls execute real stages."""
 import json
+from pathlib import Path
 import streamlit as st
 
-from lab.cli import comparison, summary
+from lab.cli import comparison
 from lab.runtime import Budget, Runtime
 from lab.scenario import Scenario
 from lab.tokens import count, prepare
+from lab.console import console, table, event_log, status_text
 
-st.set_page_config(page_title="Compaction Runtime Lab", page_icon="🔬", layout="wide")
-st.caption("CONTEXT ENGINEERING / 可运行的机制实验")
-st.title("压缩以后，任务还能继续吗？")
-st.write("用一个真实的 refresh token 测试故障，观察预算触发、信息取舍、重建校验与恢复执行。")
-st.info("离线初步框架 · 压缩器与恢复 Worker 均为确定性规则 · 不是模型响应回放，也不是 OpenAI 内部机制复刻。")
+st.set_page_config(page_title="Compaction Runtime Lab", layout="wide", initial_sidebar_state="collapsed")
+st.markdown("<style>" + (Path(__file__).parent / "ui/console.css").read_text() + "</style>", unsafe_allow_html=True)
+st.title("> compaction-runtime-lab")
+st.caption("case: refresh_token  /  provider: offline-rules-v1  /  worker: scripted-offline-v1")
 try:
     prepare()
 except RuntimeError as exc:
@@ -22,20 +23,21 @@ FAULTS = {
     "正常运行": "none", "丢失早期约束": "drop_constraint", "伪造压缩证据": "forged_evidence",
     "压缩后仍然超预算": "budget_overflow", "存在未完成工具调用": "pending_tool", "压缩器超时": "provider_timeout",
 }
-with st.sidebar:
-    st.header("实验控制")
-    fault = st.selectbox("故障注入", list(FAULTS))
-    target = st.slider("压缩目标 Token", 900, 2600, 1800, 100)
-    st.caption("阈值 3500 · 实验窗口 20000 · 输出预留 1200 · 下一次工具结果预留 600")
-    initialize = st.button("创建 / 重置实验", type="primary", use_container_width=True)
-    st.caption("变更参数后点击重置。每次仅修改临时副本，仓库中的故障夹具保持不变。")
+fault_col, target_col, reset_col = st.columns([3, 2, 2])
+fault = fault_col.selectbox("fault / 故障注入", list(FAULTS))
+target = target_col.number_input("target / Token", min_value=900, max_value=2600, value=1800, step=100)
+reset_col.markdown('<div class="control-spacer" aria-hidden="true"></div>', unsafe_allow_html=True)
+initialize = reset_col.button("创建 / 重置实验", use_container_width=True)
 
 if initialize:
     if "case" in st.session_state:
         st.session_state.case.close()
+    # A failed reset must not leave a closed case or stale context executable.
+    for key in ("case", "runtime", "steps", "continuation"):
+        st.session_state.pop(key, None)
     case = Scenario()
     try:
-        with st.spinner("运行故障夹具，采集真实源码与 pytest 输出…"):
+        with st.spinner("pytest / 采集故障输出"):
             runtime = Runtime(case.collect(), fault=FAULTS[fault], budget=Budget(target=target))
         st.session_state.case = case
         st.session_state.runtime = runtime
@@ -45,81 +47,106 @@ if initialize:
         case.close()
         st.error(str(exc))
 
-left, right = st.tabs(["逐阶段实验", "三组对照"])
-with left:
-    if "runtime" not in st.session_state:
-        st.write("先创建实验。故障复现会产生 2 个失败、81 个通过的真实测试结果。")
-        st.code("python -m lab.cli demo\npython -m lab.cli compare\npython -m pytest -q", language="bash")
+runtime = st.session_state.get("runtime")
+continuation = st.session_state.get("continuation")
+report = runtime.report() if runtime else None
+if runtime:
+    if runtime.fault != FAULTS[fault] or runtime.budget.target != target:
+        st.caption("配置已修改，尚未应用。点击创建 / 重置实验后生效。")
+    console(status_text(report, continuation))
+else:
+    console("state      IDLE\ncontext    -- → -- tokens    target --\nresume     NOT_RUN")
+
+run_tab, inspect_tab, compare_tab = st.tabs(["运行记录", "检查上下文", "对照实验"])
+with run_tab:
+    step_col, run_col, resume_col = st.columns([1, 1, 1.4])
+    active = runtime is not None and runtime.status in {"ready", "running"}
+    step = step_col.button("下一阶段", disabled=not active, use_container_width=True)
+    auto = run_col.button("运行剩余阶段", disabled=not active, use_container_width=True)
+    can_resume = runtime is not None and runtime.status in {"committed", "skipped"} and continuation is None
+    resume = resume_col.button("恢复任务并运行测试", disabled=not can_resume, use_container_width=True)
+    if step or auto:
+        try:
+            if auto:
+                for _ in st.session_state.steps:
+                    pass
+            else:
+                next(st.session_state.steps)
+        except StopIteration:
+            pass
+        st.rerun()
+    if resume:
+        st.session_state.continuation = st.session_state.case.continue_task(runtime.current)
+        st.rerun()
+
+    if not runtime:
+        console("[idle] 创建实验以采集 auth.py 与 pytest 输出。\n[mode] 离线规则；没有调用模型 API。")
     else:
-        runtime = st.session_state.runtime
-        st.caption(f"当前实验：{runtime.fault} · target={runtime.budget.target} · worker=scripted-offline-v1")
-        a, b, c = st.columns(3)
-        step = a.button("下一阶段", disabled=runtime.status not in {"ready", "running"}, use_container_width=True)
-        auto = b.button("运行剩余阶段", disabled=runtime.status not in {"ready", "running"}, use_container_width=True)
-        resume = c.button("恢复任务并运行测试", disabled=runtime.status not in {"committed", "skipped"} or st.session_state.continuation is not None, use_container_width=True)
-        if step or auto:
-            try:
-                if auto:
-                    for _ in st.session_state.steps:
-                        pass
-                else:
-                    next(st.session_state.steps)
-            except StopIteration:
-                pass
-            st.rerun()
-        if resume:
-            st.session_state.continuation = st.session_state.case.continue_task(runtime.current)
-            st.rerun()
-        report = runtime.report()
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("原始上下文", report["original_tokens"])
-        m2.metric("候选上下文", report["candidate_tokens"] if runtime.candidate else "—")
-        m3.metric("已提交上下文", report["committed_tokens"])
-        m4.metric("状态", runtime.status.upper())
-        st.caption("Token 是 cl100k_base 对完整 JSON 信封的实测计数，包含 system、工具定义和状态；不代表 API 计费量。")
-        if runtime.events:
-            st.caption("阶段时间为实验创建后的累计墙钟时间，包含手动暂停；不是压缩计算耗时。")
-            st.progress(min(len(runtime.events) / 7, 1.0))
-            for event in runtime.events:
-                with st.expander(f"{event['index'] + 1:02d} / {event['stage']} · {event['elapsed_ms']} ms", expanded=event is runtime.events[-1]):
-                    st.json(event)
-            if runtime.events[0]["stage"] == "snapshot":
-                st.line_chart({"累计上下文 Token": [x["tokens"] for x in runtime.events[0]["growth"]]})
-        if runtime.proposal:
-            st.subheader("信息取舍")
-            original = {x["id"]: x for x in runtime.snapshot}
-            st.dataframe([{"item": d["item_id"], "type": original[d["item_id"]]["kind"],
-                           "source tokens": count(original[d["item_id"]]), "action": d["action"], "reason": d["reason"]}
-                          for d in runtime.proposal["decisions"]], hide_index=True, use_container_width=True)
-        if runtime.candidate:
-            st.subheader("上下文重建")
-            before, after = st.columns(2)
-            with before:
-                st.write("Before / 原始快照")
-                st.json(runtime.before, expanded=False)
-            with after:
-                st.write("After / 候选上下文（仅校验通过才提交）")
-                st.json(runtime.candidate, expanded=False)
-            st.json(runtime.validation)
-        if st.session_state.continuation:
-            continuation = st.session_state.continuation
-            st.subheader("恢复执行证据")
-            st.write("恢复结果：", continuation["status"])
+        st.caption(f"fault={runtime.fault}  threshold={runtime.budget.trigger}  window={runtime.budget.max_context}  reserve={runtime.budget.reserved_output}+{runtime.budget.reserved_next_tool}")
+        console(event_log(runtime.events) or "[ready] 故障已复现，等待下一阶段。")
+        if runtime.validation:
+            passed = sum(runtime.validation.values())
+            with st.expander(f"validation / {passed} of {len(runtime.validation)} passed", expanded=not all(runtime.validation.values())):
+                console("\n".join(f"[{'PASS' if ok else 'FAIL'}] {name}" for name, ok in runtime.validation.items()))
+        if continuation:
+            st.subheader("resume / 执行结果")
             if "diff" in continuation:
                 st.code(continuation["diff"], language="diff")
-                st.code(continuation["tests"]["stdout"])
+                st.code(continuation["tests"]["stdout"], language=None)
             else:
-                st.json(continuation)
-            report["continuation"] = continuation
-        st.download_button("下载本次 Trace JSON", json.dumps(report, ensure_ascii=False, indent=2), "compaction-trace.json", mime="application/json")
+                console(continuation.get("reason", continuation["status"]))
+        if runtime.proposal:
+            st.subheader("selection / 信息取舍")
+            originals = {x["id"]: x for x in runtime.snapshot}
+            candidate = {x["id"]: x for x in runtime.candidate["items"]} if runtime.candidate else None
+            table(["item", "kind", "before", "candidate", "action"], [
+                [d["item_id"], originals[d["item_id"]]["kind"], count(originals[d["item_id"]]),
+                 "--" if candidate is None else count(candidate[d["item_id"]]) if d["item_id"] in candidate else 0, d["action"]]
+                for d in runtime.proposal["decisions"]
+            ], numeric={2, 3})
+            st.caption("条目计数包含证据引用开销；总量以完整上下文计数为准。理由与原文见检查上下文。")
 
-with right:
-    st.write("同一份真实输入、同一个恢复 Worker、每组独立的临时目录。完整上下文是参考组；截断和结构化压缩共享 1800 Token 目标。")
-    st.caption("截断组允许观察缺失约束后的拒绝执行，不预设模型一定会换库。对照采用固定默认参数，与侧栏单次实验参数独立。")
+with inspect_tab:
+    if not runtime:
+        console("[idle] 尚无快照。")
+    else:
+        if runtime.events:
+            selected = st.selectbox("stage / 阶段输入输出", range(len(runtime.events)),
+                                    format_func=lambda i: f"{i + 1:02d} {runtime.events[i]['stage']}")
+            st.json(runtime.events[selected], expanded=False)
+        before, after = st.columns(2)
+        with before:
+            st.subheader("before / 原始快照")
+            st.json(runtime.before, expanded=False)
+        with after:
+            st.subheader("candidate / 候选上下文")
+            if runtime.candidate is not None:
+                st.json(runtime.candidate, expanded=False)
+            else:
+                console("[pending] 尚未重建。")
+        if runtime.events:
+            with st.expander("growth / 上下文增长明细"):
+                table(["item", "cumulative tokens"], [[x["item"], x["tokens"]] for x in runtime.events[0]["growth"]], numeric={1})
+        st.caption("Token: cl100k_base / canonical JSON，非 API 计费量。elapsed_ms 为累计墙钟时间，包含单步等待。")
+
+with compare_tab:
+    st.caption("同一快照 / 同一 Worker / 独立故障副本 / 固定 target=1800。")
     if st.button("运行三组对照"):
-        with st.spinner("运行完整上下文、最老优先截断、结构化压缩…"):
+        with st.spinner("compare / full · truncate · structured"):
             st.session_state.comparison = comparison()
     if "comparison" in st.session_state:
         reports = st.session_state.comparison
-        st.dataframe([{k: v for k, v in summary(x).items() if k != "checks"} for x in reports], hide_index=True, use_container_width=True)
-        st.download_button("下载对照证据 JSON", json.dumps(reports, ensure_ascii=False, indent=2), "comparison.json", mime="application/json")
+        table(["strategy", "before", "candidate", "reduction", "budget", "constraints", "resume"], [
+            [x["strategy"], x["original_tokens"], x["candidate_tokens"], f"{x['reduction_percent']:.2f}%",
+             "PASS" if x["validation"].get("within_target") else "FAIL",
+             "PASS" if x["validation"].get("constraints_preserved") else "FAIL", x["continuation"]["status"].upper()]
+            for x in reports
+        ], numeric={1, 2, 3})
+        st.download_button("导出对照 JSON", json.dumps(reports, ensure_ascii=False, indent=2), "comparison.json", mime="application/json")
+    else:
+        console("[idle] 对照尚未运行。")
+
+if report:
+    if continuation:
+        report["continuation"] = continuation
+    st.download_button("导出 Trace JSON", json.dumps(report, ensure_ascii=False, indent=2), "compaction-trace.json", mime="application/json")
